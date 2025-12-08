@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""
 """
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                 ⚡ HYPER-X BOT SCRIPT v3.0 (ULTIMATE) ⚡             ║
@@ -783,3 +785,207 @@ class HyperBotInstance:
 
         response = f"[Bot {self.bot_number}] 👑 SUDO UPDATE\n"
         if added:
+            response += f"✅ Added: {', '.join(added)}\n"
+        if invalid:
+            response += f"❌ Invalid IDs: {', '.join(invalid)}\n"
+        response += f"📊 Total authorized: {len(self.authorized_users)}"
+
+        await update.message.reply_text(response)
+
+    async def unsudo_command(self, update, context):
+        if not await self.check_main_owner(update):
+            return
+
+        if not context.args:
+            await update.message.reply_text("Usage: /unsudo <user_id1> <user_id2> ...")
+            return
+
+        removed = []
+        not_found = []
+        invalid = []
+
+        for arg in context.args:
+            try:
+                user_id = int(arg)
+                if user_id in self.authorized_users:
+                    self.authorized_users.remove(user_id)
+                    removed.append(str(user_id))
+                else:
+                    not_found.append(str(user_id))
+            except ValueError:
+                invalid.append(arg)
+
+        response = f"[Bot {self.bot_number}] 👑 SUDO UPDATE\n"
+        if removed:
+            response += f"🚫 Removed: {', '.join(removed)}\n"
+        if not_found:
+            response += f"⚠️ Not found: {', '.join(not_found)}\n"
+        if invalid:
+            response += f"❌ Invalid IDs: {', '.join(invalid)}\n"
+        response += f"📊 Total authorized: {len(self.authorized_users)}"
+
+        await update.message.reply_text(response)
+
+    async def sudolist_command(self, update, context):
+        if not await self.check_main_owner(update):
+            return
+
+        response = f"[Bot {self.bot_number}] 👑 SUDO LIST\n\n"
+        response += f"🔑 Main Owner: {self.owner_id}\n\n"
+
+        if self.authorized_users:
+            response += "✅ Authorized Users:\n"
+            for user_id in sorted(self.authorized_users):
+                response += f"  • {user_id}\n"
+        else:
+            response += "📭 No authorized users yet"
+
+        await update.message.reply_text(response)
+
+    async def ping_command(self, update, context):
+        if not await self.check_owner(update):
+            return
+
+        start_time = time.time()
+        msg = await update.message.reply_text("🏓 Pinging...")
+        end_time = time.time()
+
+        latency_ms = (end_time - start_time) * 1000
+        await msg.edit_text(f"[Bot {self.bot_number}] 🏓 Pong!\n⚡ Latency: {latency_ms:.2f} ms")
+
+    async def status_command(self, update, context):
+        if not await self.check_owner(update):
+            return
+
+        uptime = int(time.time() - self.stats["start_time"])
+        hours, remainder = divmod(uptime, 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        active_tasks = 0
+        if update.effective_chat.id in self.active_spam_tasks:
+            active_tasks += len(self.active_spam_tasks[update.effective_chat.id])
+        if update.effective_chat.id in self.active_name_change_tasks:
+            active_tasks += len(self.active_name_change_tasks[update.effective_chat.id])
+        if update.effective_chat.id in self.active_custom_nc_tasks:
+            active_tasks += len(self.active_custom_nc_tasks[update.effective_chat.id])
+        if update.effective_chat.id in self.active_reply_tasks:
+            active_tasks += 1
+
+        await update.message.reply_text(f"""
+📊 HYPER-X BOT {self.bot_number} STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Messages Sent: {self.stats['sent']}
+⚠️ Errors: {self.stats['errors']}
+⏱️ Uptime: {hours}h {minutes}m {seconds}s
+🚀 Active Tasks: {active_tasks}
+━━━━━━━━━━━━━━━━━━━━━━━━
+""")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ⚡ BOT INITIALIZATION
+# ═══════════════════════════════════════════════════════════════════════
+async def force_takeover_bot(token, bot_number):
+    """Force takeover bot from any other instance by deleting webhook and clearing updates"""
+    try:
+        import httpx
+        base_url = f"https://api.telegram.org/bot{token}"
+        async with httpx.AsyncClient(timeout=30) as client:
+            await client.post(f"{base_url}/deleteWebhook", json={"drop_pending_updates": True})
+            await client.post(f"{base_url}/getUpdates", json={"offset": -1, "timeout": 0})
+            print(f"[Bot {bot_number}] 🔥 Forced takeover - cleared other instances!")
+            await asyncio.sleep(1)
+    except Exception as e:
+        print(f"[Bot {bot_number}] ⚠️ Takeover attempt: {e}")
+
+
+async def run_bot(token, bot_number, owner_id):
+    await force_takeover_bot(token, bot_number)
+
+    application = Application.builder().token(token).build()
+    bot_instance = HyperBotInstance(bot_number, owner_id)
+
+    application.add_handler(CommandHandler("start", bot_instance.start))
+    application.add_handler(CommandHandler("help", bot_instance.start))
+    application.add_handler(CommandHandler("nc", bot_instance.nc_command))
+    application.add_handler(CommandHandler("stopnc", bot_instance.stop_nc_command))
+    application.add_handler(CommandHandler("ctmnc", bot_instance.ctmnc_command))
+    application.add_handler(CommandHandler("stopctmnc", bot_instance.stop_ctmnc_command))
+    application.add_handler(CommandHandler("spam", bot_instance.spam_command))
+    application.add_handler(CommandHandler("stopspam", bot_instance.stop_spam_command))
+    application.add_handler(CommandHandler("target", bot_instance.target_command))
+    application.add_handler(CommandHandler("reply", bot_instance.reply_command))
+    application.add_handler(CommandHandler("stopreply", bot_instance.stop_reply_command))
+    application.add_handler(CommandHandler("delay", bot_instance.delay_command))
+    application.add_handler(CommandHandler("threads", bot_instance.threads_command))
+    application.add_handler(CommandHandler("stopall", bot_instance.stop_all_command))
+    application.add_handler(CommandHandler("sudo", bot_instance.sudo_command))
+    application.add_handler(CommandHandler("unsudo", bot_instance.unsudo_command))
+    application.add_handler(CommandHandler("sudolist", bot_instance.sudolist_command))
+    application.add_handler(CommandHandler("ping", bot_instance.ping_command))
+    application.add_handler(CommandHandler("status", bot_instance.status_command))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, bot_instance.message_collector))
+
+    print(f"⚡ Bot {bot_number} INITIALIZED")
+
+    max_retries = 10
+
+    for attempt in range(max_retries):
+        try:
+            await application.initialize()
+            await application.start()
+            if application.updater:
+                await application.updater.start_polling(
+                    drop_pending_updates=True,
+                    allowed_updates=["message", "edited_message", "channel_post", "edited_channel_post", "callback_query"],
+                    poll_interval=0.5
+                )
+            print(f"⚡ Bot {bot_number} RUNNING AGGRESSIVELY!")
+
+            while True:
+                await asyncio.sleep(3600)
+
+        except Exception as e:
+            error_str = str(e).lower()
+            if "conflict" in error_str and attempt < max_retries - 1:
+                await force_takeover_bot(token, bot_number)
+                wait_time = 1
+                print(f"[Bot {bot_number}] 🔄 Retaking control... (attempt {attempt + 1}/{max_retries})")
+                await asyncio.sleep(wait_time)
+                continue
+            print(f"[Bot {bot_number}] ❌ Error: {e}")
+            break
+        finally:
+            try:
+                if application.updater:
+                    await application.updater.stop()
+                await application.stop()
+                await application.shutdown()
+            except Exception:
+                pass
+
+
+async def main():
+    print("""
+╔══════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║           ⚡⚡⚡ HYPER-X BOT CLUSTER v3.0 ⚡⚡⚡                   ║
+║                                                                      ║
+║                      STARTING ALL BOTS...                            ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════════╝
+    """)
+    tasks = []
+    for i, token in enumerate(BOT_TOKENS):
+        tasks.append(run_bot(token, i + 1, OWNER_ID))
+
+    await asyncio.gather(*tasks)
+
+
+if __name__ == "__main__":
+    try:
+        if os.name == 'nt':
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n⚡ HYPER-X SHUTDOWN COMPLETE")
